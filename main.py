@@ -24,7 +24,7 @@ MODEL_ID = "gemini-2.5-flash"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-# ── 2. FLASK (Render Free ን ለማስደሰት) ─────────────────────────────────
+# ── 2. FLASK ───────────────────────────────────────────────────────────
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
@@ -54,7 +54,7 @@ Your capabilities:
 3. Provide step-by-step detailed explanations.
 4. If a user sends multiple files, treat them as a combined study material.
 
-Formatting: Use Markdown, emojis, and clear structures. 
+Formatting: Use Markdown, emojis, and clear structures.
 Language: Respond in the language used by the user (Amharic or English).
 """
 
@@ -86,7 +86,6 @@ async def handle_any_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         local_path = f"temp_{user_id}{ext}"
         await file.download_to_drive(local_path)
 
-        # mime type መወሰን
         mime_map = {
             ".pdf": "application/pdf",
             ".jpg": "image/jpeg",
@@ -100,7 +99,6 @@ async def handle_any_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         mime_type = mime_map.get(ext, "application/octet-stream")
 
-        # Gemini ላይ upload
         uploaded_file = client.files.upload(
             file=local_path,
             config={"mime_type": mime_type}
@@ -120,6 +118,7 @@ async def handle_any_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"File Error: {e}")
         await msg.edit_text("❌ ፋይሉን ማንበብ አልቻልኩም። እባክህ እንደገና ሞክር።")
+
 # ── 7. CHAT HANDLER ────────────────────────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -127,12 +126,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_chat_session(user_id)
 
     history = session["history"]
-    
-    # ፋይሎች ካሉ ከ text ጋር አብረው ይላካሉ
+
     content_parts = [types.Part.from_text(text=user_input)]
     for file_part in session["active_files"]:
         content_parts.append(file_part)
-    
+
     history.append(types.Content(role="user", parts=content_parts))
 
     try:
@@ -159,6 +157,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"GenAI Error: {e}")
         await update.message.reply_text("😔 ይቅርታ፣ መልስ ለመስጠት ተቸግሬያለሁ።")
+
 # ── 8. COMMANDS ──────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -190,12 +189,8 @@ async def run_bot():
 
     async with app:
         await app.start()
-        import asyncio
-await asyncio.sleep(5)
-await app.updater.start_polling(
-    drop_pending_updates=True,
-    allowed_updates=Update.ALL_TYPES
-)
+        await asyncio.sleep(3)
+        await app.updater.start_polling(drop_pending_updates=True)
         logger.info("✅ Polling ጀምሯል!")
         await asyncio.sleep(float('inf'))
         await app.updater.stop()
@@ -203,11 +198,7 @@ await app.updater.start_polling(
 
 # ── 10. ENTRY POINT ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    # Flask — background thread ውስጥ ያሄዳል
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info("✅ Flask server ጀምሯል...")
-
-    # Bot — main thread ውስጥ ያሄዳል
     asyncio.run(run_bot())
-        
