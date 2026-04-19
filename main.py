@@ -82,12 +82,35 @@ async def handle_any_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             attachment = attachment[-1]
 
         file = await context.bot.get_file(attachment.file_id)
-        ext = Path(file.file_path).suffix
+        ext = Path(file.file_path).suffix.lower()
         local_path = f"temp_{user_id}{ext}"
         await file.download_to_drive(local_path)
 
-        uploaded_file = client.files.upload(path=local_path)
-        session["active_files"].append(uploaded_file.uri)
+        # mime type መወሰን
+        mime_map = {
+            ".pdf": "application/pdf",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".png": "image/png",
+            ".mp3": "audio/mpeg",
+            ".ogg": "audio/ogg",
+            ".wav": "audio/wav",
+            ".doc": "application/msword",
+            ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        }
+        mime_type = mime_map.get(ext, "application/octet-stream")
+
+        # Gemini ላይ upload
+        uploaded_file = client.files.upload(
+            file=local_path,
+            config={"mime_type": mime_type}
+        )
+        session["active_files"].append(
+            types.Part.from_uri(
+                file_uri=uploaded_file.uri,
+                mime_type=mime_type
+            )
+        )
 
         await msg.edit_text(f"✅ {ext.upper()} ፋይል ተቀብያለሁ! አሁን ስለ ፋይሉ መጠየቅ ትችላለህ።")
 
@@ -96,8 +119,7 @@ async def handle_any_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"File Error: {e}")
-        await msg.edit_text("❌ ፋይሉን ማንበብ አልቻልኩም። እባክህ በPDF ወይም በምስል ሞክር።")
-
+        await msg.edit_text("❌ ፋይሉን ማንበብ አልቻልኩም። እባክህ እንደገና ሞክር።")
 # ── 7. CHAT HANDLER ────────────────────────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -105,7 +127,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     session = get_chat_session(user_id)
 
     history = session["history"]
-    history.append(types.Content(role="user", parts=[types.Part.from_text(text=user_input)]))
+    
+    # ፋይሎች ካሉ ከ text ጋር አብረው ይላካሉ
+    content_parts = [types.Part.from_text(text=user_input)]
+    for file_part in session["active_files"]:
+        content_parts.append(file_part)
+    
+    history.append(types.Content(role="user", parts=content_parts))
 
     try:
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -131,7 +159,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"GenAI Error: {e}")
         await update.message.reply_text("😔 ይቅርታ፣ መልስ ለመስጠት ተቸግሬያለሁ።")
-
 # ── 8. COMMANDS ──────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
