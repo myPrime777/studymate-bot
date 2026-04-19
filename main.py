@@ -190,7 +190,12 @@ async def run_bot():
 
     async with app:
         await app.start()
-        await app.updater.start_polling(drop_pending_updates=True)
+        import asyncio
+await asyncio.sleep(5)
+await app.updater.start_polling(
+    drop_pending_updates=True,
+    allowed_updates=Update.ALL_TYPES
+)
         logger.info("✅ Polling ጀምሯል!")
         await asyncio.sleep(float('inf'))
         await app.updater.stop()
