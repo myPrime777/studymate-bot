@@ -187,15 +187,11 @@ async def run_bot():
     ))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    async with app:
-        await app.start()
-        await app.bot.delete_webhook(drop_pending_updates=True)
-        await asyncio.sleep(5)
-        await app.updater.start_polling(drop_pending_updates=True)
-        logger.info("✅ Polling ጀምሯል!")
-        await asyncio.sleep(float('inf'))
-        await app.updater.stop()
-        await app.stop()
+    logger.info("✅ Polling ጀምሯል!")
+    await app.run_polling(
+        drop_pending_updates=True,
+        close_loop=False
+    )
 
 # ── 10. ENTRY POINT ───────────────────────────────────────────────────
 if __name__ == "__main__":
