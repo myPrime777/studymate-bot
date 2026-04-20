@@ -189,7 +189,8 @@ async def run_bot():
 
     async with app:
         await app.start()
-        await asyncio.sleep(3)
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(5)
         await app.updater.start_polling(drop_pending_updates=True)
         logger.info("✅ Polling ጀምሯል!")
         await asyncio.sleep(float('inf'))
@@ -202,3 +203,4 @@ if __name__ == "__main__":
     flask_thread.start()
     logger.info("✅ Flask server ጀምሯል...")
     asyncio.run(run_bot())
+    
