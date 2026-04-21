@@ -187,28 +187,19 @@ async def run_bot():
     ))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    logger.info("✅ Polling ጀምሯል!")
-    await app.run_polling(
-        drop_pending_updates=True,
-        close_loop=False
-    )
+    async with app:
+        await app.start()
+        await app.bot.delete_webhook(drop_pending_updates=True)
+        await asyncio.sleep(2)
+        await app.updater.start_polling(drop_pending_updates=True)
+        logger.info("✅ Polling ጀምሯል!")
+        while True:
+            await asyncio.sleep(1)
 
 # ── 10. ENTRY POINT ───────────────────────────────────────────────────
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.daemon = True
     flask_thread.start()
     logger.info("✅ Flask server ጀምሯል...")
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(run_bot())
-    
-    try:
-        asyncio.run(run_bot())
-    except RuntimeError as e:
-        if "already running" in str(e):
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(run_bot())
+    asyncio.run(run_bot())
     
