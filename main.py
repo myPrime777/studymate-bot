@@ -195,13 +195,14 @@ async def run_bot():
 
 # ── 10. ENTRY POINT ───────────────────────────────────────────────────
 if __name__ == "__main__":
-    import sys
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
     flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.daemon = True
     flask_thread.start()
     logger.info("✅ Flask server ጀምሯል...")
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_bot())
     
     try:
         asyncio.run(run_bot())
