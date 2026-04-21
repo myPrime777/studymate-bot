@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_ID = "gemini-2.5-flash"
+MODEL_ID = "gemini-1.5-flash"
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
