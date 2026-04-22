@@ -5,6 +5,7 @@ import threading
 from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask
+from time import time
 
 import google.genai as genai
 from google.genai import types
@@ -12,6 +13,8 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ── 1. CONFIG & SETUP ──────────────────────────────────────────────────
+os.environ['WEB_CONCURRENCY'] = '1'  # Render አንድ ኢንስታንስ ብቻ
+
 basedir = os.path.abspath(os.path.dirname(__file__))
 load_dotenv(os.path.join(basedir, '.env'))
 
@@ -20,9 +23,13 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-MODEL_ID = "gemini-2.5-flash"
+MODEL_ID = "gemini-2.5-flash"  # የተረጋጋ ሞዴል
 
 client = genai.Client(api_key=GEMINI_API_KEY)
+
+# Rate limiting
+_last_request_time = {}
+_RATE_LIMIT_SEC = 30
 
 # ── 2. FLASK ───────────────────────────────────────────────────────────
 flask_app = Flask(__name__)
@@ -50,7 +57,7 @@ def get_chat_session(user_id):
 SYSTEM_PROMPT = """You are StudyMate AI — an advanced academic assistant.
 Your capabilities:
 1. Remember past conversation context.
-2. Analyze PDF, Word, Excel, PPT, Audio, and Images.
+2. Analyze PDF, Word, Images, and Audio files.
 3. Provide step-by-step detailed explanations.
 4. If a user sends multiple files, treat them as a combined study material.
 
@@ -69,11 +76,16 @@ async def safe_reply(update: Update, text: str):
         except Exception:
             await update.message.reply_text(chunk)
 
-# ── 6. FILE HANDLER ───────────────────────────────────────────────────
+# ── 6. FILE HANDLER (Voice አልደግፍም) ───────────────────────────────────
 async def handle_any_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
+    # ❌ Voice ከሆነ አስወግድ
+    if update.message.voice:
+        await update.message.reply_text("🎤 የድምጽ መልዕክት አልደግፍም አሁን። እባክህ በጽሁፍ ወይም በምስል ላክ።")
+        return
+    
     session = get_chat_session(user_id)
-
     msg = await update.message.reply_text("📥 ፋይሉን እያነበብኩ ነው... ⏳")
 
     try:
@@ -110,7 +122,8 @@ async def handle_any_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
 
-        await msg.edit_text(f"✅ {ext.upper()} ፋይል ተቀብያለሁ! አሁን ስለ ፋይሉ መጠየቅ ትችላለህ።")
+        file_type = "🖼️ ምስል" if ext in [".jpg", ".jpeg", ".png"] else "📄 ፋይል"
+        await msg.edit_text(f"✅ {file_type} ተቀብያለሁ! አሁን ስለሱ መጠየቅ ትችላለህ።")
 
         if os.path.exists(local_path):
             os.remove(local_path)
@@ -119,11 +132,20 @@ async def handle_any_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"File Error: {e}")
         await msg.edit_text("❌ ፋይሉን ማንበብ አልቻልኩም። እባክህ እንደገና ሞክር።")
 
-# ── 7. CHAT HANDLER ────────────────────────────────────────────────────
+# ── 7. CHAT HANDLER (Rate Limited) ─────────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user_input = update.message.text
     session = get_chat_session(user_id)
+
+    # Rate limiting
+    now = time()
+    last = _last_request_time.get(user_id, 0)
+    if now - last < _RATE_LIMIT_SEC:
+        wait = int(_RATE_LIMIT_SEC - (now - last))
+        await update.message.reply_text(f"⏳ እባክህ ለ{wait} ሰከንድ ቆይ ከዚያ እንደገና ላክ።")
+        return
+    _last_request_time[user_id] = now
 
     history = session["history"]
 
@@ -156,7 +178,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         logger.error(f"GenAI Error: {e}")
-        await update.message.reply_text("😔 ይቅርታ፣ መልስ ለመስጠት ተቸግሬያለሁ።")
+        await update.message.reply_text("😔 ይቅርታ፣ መልስ ለመስጠት ተቸግሬያለሁ። እባክህ ከ30 ሰከንድ በኋላ ሞክር።")
 
 # ── 8. COMMANDS ──────────────────────────────────────────────────────
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,7 +186,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_sessions[user_id] = {"history": [], "active_files": []}
     await update.message.reply_text(
         "👋 ሰላም! እኔ StudyMate AI ነኝ።\n\n"
-        "PDF, Audio, Image ወይም ማንኛውንም ፋይል መላክ ትችላለህ።\n"
+        "📤 ልላክልኝ የምትችላቸው:\n"
+        "• ምስሎች (JPG, PNG)\n"
+        "• PDF ፋይሎች\n"
+        "• Word ፋይሎች\n"
+        "• ኦዲዮ (MP3, WAV)\n\n"
+        "🎤 የድምጽ መልዕክት ግን አልደግፍም።\n"
         "ያወራነውን ሁሉ አስታውሳለሁ! 🧠"
     )
 
@@ -182,7 +209,7 @@ async def run_bot():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("clear", clear))
     app.add_handler(MessageHandler(
-        filters.Document.ALL | filters.PHOTO | filters.AUDIO | filters.VOICE,
+        filters.Document.ALL | filters.PHOTO | filters.AUDIO,
         handle_any_file
     ))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
@@ -202,4 +229,3 @@ if __name__ == "__main__":
     flask_thread.start()
     logger.info("✅ Flask server ጀምሯል...")
     asyncio.run(run_bot())
-    
